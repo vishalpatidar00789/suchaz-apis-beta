@@ -2,41 +2,42 @@ import { Router } from 'express'
 import { middleware as query, Schema } from 'querymen'
 import { middleware as body } from 'bodymen'
 import { token } from '../../services/passport'
-import { index, aggregateList, getProductById, create, update, destroy } from './controller'
+import { index, getOptionById, create, update, destroy } from './controller'
 import { schema } from './model'
-import { uploadMultiple } from '../../services/multer'
 import { USER_TYPES } from '../../constants'
-
-const query_schema = new Schema({
-    sort: '-createdAt',
-    search: {
-        type: RegExp,
-        paths: ['title', 'description'],
-        bindTo: 'search'
-    }
-})
 
 const router = new Router()
 const { title } = schema.tree
+const query_schema = new Schema({
+    sort: 'title',
+    search: {
+        type: RegExp,
+        paths: ['title'],
+        bindTo: 'search'
+    },
+    group: {
+        type: String,
+        paths: ['group_name'],
+        bindTo: 'group'
+    }
+})
 
 router.get('/',
-    token({ required: true }),
+    token({ required: true, roles: [USER_TYPES.ADMIN] }),
     query(query_schema),
-    aggregateList)
+    index)
 
 router.get('/:id',
-    getProductById)
-
+    token({ required: true, roles: [USER_TYPES.ADMIN] }),
+    getOptionById)
 
 router.post('/',
-    token({ required: true, roles: [USER_TYPES.ADMIN, USER_TYPES.SELLER] }),
-    uploadMultiple(process.env.SUCHAZ_PRODUCT_BUCKET),
+    token({ required: true, roles: [USER_TYPES.ADMIN] }),
     body({ title }),
     create)
 
 router.put('/:id',
     token({ required: true, roles: [USER_TYPES.ADMIN] }),
-    uploadMultiple(process.env.SUCHAZ_PRODUCT_BUCKET),
     body(),
     update)
 

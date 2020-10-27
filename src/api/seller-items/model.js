@@ -4,13 +4,23 @@ import mongooseKeywords from 'mongoose-keywords'
 const mongoosePaginate = require('mongoose-paginate-v2');
 const aggregatePaginate = require('mongoose-aggregate-paginate-v2');
 
+const skuSchema = new Schema({
+    type: { type: String, required: true },
+    key: { type: String, required: true },
+    value: { type: String, required: true },
+    quantity: { type: Number, required: true },
+    price: { type: Number, required: true },
+    image: { type: String }
+})
+
 const sellerItemSchema = new Schema({
     title: { type: String, required: true, unique: true },
     slug: { type: String, required: true, unique: true },
     isAffiliate: { type: Boolean, default: false },
     description: { type: String },
-    vendorId: { type: Schema.Types.ObjectId, ref: 'store', required: true },
+    storeId: { type: Schema.Types.ObjectId, ref: 'store', required: true },
     suchazProductId: { type: Schema.Types.ObjectId, ref: 'suchaz_product', required: true },
+    skus: [skuSchema],
     bestPrice: { type: Number },
     sellingPrice: { type: Number },
     discountRate: { type: Number },
@@ -24,7 +34,7 @@ const sellerItemSchema = new Schema({
     brand: { type: String },
     gst: { type: String, default: "0" },
     gift_wrap_available: { type: Boolean, default: false },
-    gift_wrap_price: { type: Number, default: "" },
+    giftWrapCharge: { type: Number, default: "" },
     customization_available: { type: Boolean, default: false },
     customization_text: { type: Boolean, default: false },
     customization_maxtext: { type: Number, default: 15 },
@@ -50,9 +60,9 @@ sellerItemSchema.virtual('suchazProduct', {
     justOne: true,
 });
 
-sellerItemSchema.virtual('vendor', {
+sellerItemSchema.virtual('store', {
     ref: 'store',
-    localField: 'vendorId',
+    localField: 'storeId',
     foreignField: '_id',
     justOne: true,
 });
@@ -67,7 +77,7 @@ sellerItemSchema.set('toJSON', {
     virtuals: true
 });
 
-const model = mongoose.model('suchaz_product', sellerItemSchema)
+const model = mongoose.model('seller_item', sellerItemSchema)
 
 export const schema = model.schema
 export default model

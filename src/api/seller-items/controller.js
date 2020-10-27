@@ -2,6 +2,7 @@ import { success, notFound, fail } from '../../services/response/'
 import { convertToSlug } from '../../helper'
 import SellerItem from './model'
 import { multiDelete } from '../../services/multer'
+import mongoose from 'mongoose'
 
 export const index = ({ querymen: { search, query, select, cursor } }, res, next) => {
     const conditions = {
@@ -20,11 +21,12 @@ const transform = async (body) => {
             title: body.title,
             slug: body.slug ? body.slug : convertToSlug(body.title),
             description: body.description,
-            vendorId: body.vendorId,
+            storeId: body.storeId,
             description: body.description,
             suchazProductId: body.suchazProductId,
             bestPrice: body.bestPrice,
             sellingPrice: body.sellingPrice,
+            skus: body.skus,
             discountRate: 100 - Math.round((parseInt(body.bestPrice) * 100) / parseInt(body.sellingPrice)),
             gift_wrap_available: body.gift_wrap_available ? body.gift_wrap_available : false,
             gift_wrap_price: body.gift_wrap_price ? body.gift_wrap_price : 0,
@@ -114,24 +116,41 @@ export const destroy = ({ params }, res, next) => {
         .catch(next)
 }
 
-export const aggregateList = ({ querymen: { search, query, select, cursor } }, res, next) => {
+export const aggregateList = ({ querymen: { search, store, select, cursor } }, res, next) => {
     const conditions = {
-        ...query,
         search
     }
-
+    if (store) {
+        conditions.storeId = mongoose.Types.ObjectId(body.storeId)
+    }
     const _aggr = SellerItem.aggregate([
         {
-            $lookup: {
-                from: "categories",
-                localField: "categoryCode",
+            $lookup:
+            {
+                from: "suchaz_products",
+                localField: "suchazProductId",
                 foreignField: "_id",
-                as: "category"
+                as: "suchazProduct"
             }
         },
         {
             $unwind: {
-                path: "$category",
+                path: "$suchazProduct",
+                preserveNullAndEmptyArrays: false
+            }
+        },
+        {
+            $lookup:
+            {
+                from: 'categories',
+                localField: 'suchazProduct.categoryCode',
+                foreignField: '_id',
+                as: "suchazProduct.category"
+            }
+        },
+        {
+            $unwind: {
+                path: "$suchazProduct.category",
                 preserveNullAndEmptyArrays: true
             }
         },
@@ -142,7 +161,7 @@ export const aggregateList = ({ querymen: { search, query, select, cursor } }, r
             $sort: cursor.sort ? cursor.sort : { createdAt: -1 }
         }
     ])
-    SuchazProduct.aggregatePaginate(_aggr, cursor)
+    SellerItem.aggregatePaginate(_aggr, cursor)
         .then(products => products ? products : [])
         .then(success(res, 201))
         .catch(next)

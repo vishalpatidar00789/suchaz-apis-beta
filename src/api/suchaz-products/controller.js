@@ -95,7 +95,6 @@ export const destroy = ({ params }, res, next) => {
 
 export const aggregateList = ({ querymen: { search, query, select, cursor } }, res, next) => {
     const conditions = {
-        ...query,
         search
     }
 

@@ -1,98 +1,129 @@
 const checksum_lib = require('./checksum');
 const https = require('https');
+const PaytmChecksum = require("paytmchecksum");
 
 
-// this method is called by /placeOrder Api
-exports.paytmChecksum = async (_payload) => {
+export const paytmGenChecksum = async (params) => {
     return new Promise((resolve, reject) => {
-        if (_payload && _payload.orderId && _payload.contact_no
-            && _payload.userEmail) {
-            const params = {
-                MID: process.env.PTM_MERCHANT_ID,
-                WEBSITE: process.env.PTM_WEBSITE,
-                CHANNEL_ID: 'WEB',
-                INDUSTRY_TYPE_ID: 'Retail',
-                ORDER_ID: _payload.orderId,
-                CUST_ID: _payload.userid,
-                MOBILE_NO: _payload.contact_no,
-                EMAIL: _payload.userEmail,
-                TXN_AMOUNT: (parseFloat(_payload.giftWrapChargesTotal ? _payload.giftWrapChargesTotal : 0) 
-                + parseFloat(_payload.subTotal ? _payload.subTotal : 0) 
-                + parseFloat(_payload.shippingCharges ? _payload.shippingCharges : 0)).toString(),
-                CALLBACK_URL: process.env.CALLBACK_URL + 'apiv2/admin/order/callback',
-            };
+        if (params && params.ORDERID && params.MOBILE_NO && params.TXN_AMOUNT) {
+            const body = {mid: process.env.PTM_MERCHANT_ID, orderId: params.ORDERID }
 
-            checksum_lib.genchecksum(params, process.env.PTM_MERCHANT_KEY, function (err, checksum) {
-                if(err) {
-                    reject({ data: null, msg: err.message})
-                }
-                console.log('checksum created ::')
+            var paytmChecksum = PaytmChecksum.generateSignature(JSON.stringify(body), process.env.PTM_MERCHANT_KEY);
+            paytmChecksum.then(function(checksum){
+                console.log("generateSignature Returns: " + checksum);
                 console.log(JSON.stringify(checksum))
-                resolve({ data: checksum }) 
+                resolve(checksum)
+            }).catch(function(error){
+                console.log(error);
+                reject({ data: null, msg: 'Invalid Paytm Params' })
             });
+
         } else {
-            reject({data: null, msg: 'Invalid Paytm Params'})
+            reject({ data: null, msg: 'Invalid Paytm Params' })
         }
     })
 }
 
-// this method is called by callback api by paytm
-exports.verifyChecksumAndValidateOrder = async (_payload) => {
-    return new Promise((resolve, reject) => {
-        if (_payload && _payload['CHECKSUMHASH']) {
-            const paytmChecksum = _payload['CHECKSUMHASH']
-            // received_data
-            console.log("Request body :: ", JSON.stringify(_payload));
+export const initiateTransaction = async (params) => {
+    return new Promise(async (resolve, reject) => {
+        paytmGenChecksum(params)
+        .then(checksum => {
+            var paytmParams = {};
 
-            let paytmParams = {..._payload}
-            delete paytmParams['CHECKSUMHASH']
-            console.log("Paytm params :: ", JSON.stringify(paytmParams));
-            let isChecksumValid = checksum_lib.verifychecksum(paytmParams, process.env.PTM_MERCHANT_KEY, paytmChecksum);
-            if (isChecksumValid) {
-                console.log('checksum matched.');
-                /* initialize an object */
-                const params = {};
-                params['MID'] = paytmParams['MID'];
-                params['ORDERID'] = paytmParams['ORDERID'];
-        
-                params['CHECKSUMHASH'] = paytmChecksum;
-        
-                let post_data = JSON.stringify(params);
-        
-                const options = {
-                    /* for Staging */
-                    hostname: process.env.PTM_HOSTNAME,
-                    port: 443,
-                    path: '/order/status',
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Content-Length': post_data.length,
-                    },
-                };
-        
-                var response = '';
-                var post_req = https.request(options, async function (post_res) {
-                    post_res.on('data', function (chunk) {
-                        response += chunk;
-                    });
-        
-                    post_res.on('end', async function () {
-                        response = JSON.parse(response);
+            paytmParams.body = {
+                "requestType": "Payment",
+                "mid": params.MID,
+                "websiteName": params.WEBSITE,
+                "orderId": params.ORDERID,
+                "callbackUrl": params.CALLBACK_URL,
+                "txnAmount": {
+                    "value": params.TXN_AMOUNT,
+                    "currency": "INR",
+                },
+                "userInfo": {
+                    "custId": params.CUST_ID,
+                },
+            };
 
-                    });
+            paytmParams.head = {
+                "signature": checksum
+            };
+
+            var post_data = JSON.stringify(paytmParams);
+
+            var options = {
+                hostname: process.env.PTM_HOSTNAME,
+
+                port: 443,
+                path: `/theia/api/v1/initiateTransaction?mid=${process.env.PTM_MERCHANT_ID}&orderId=${params.ORDERID}`,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': post_data.length
+                }
+            };
+
+            var response = "";
+            var post_req = https.request(options, function (post_res) {
+                post_res.on('data', function (chunk) {
+                    response += chunk;
                 });
-        
-                post_req.write(post_data);
-                post_req.end();
-        
-            } else {
-                console.log('checksum not matched.');
-                return fail(res, 'No user found', httpCode.BAD_REQUES);
-                //res.json('checksum not matched');
-            }
-        } else {
-            reject()
-        }
+
+                post_res.on('end', function () {
+                    console.log('Response: ', response);
+                    resolve(response)
+                });
+            });
+
+            post_req.write(post_data);
+            post_req.end();
+        }).catch(err => {
+            reject(err)
+        })
+    })
+}
+
+export const verifyChecksum = async (params, checksum) => {
+    const body = {mid: process.env.PTM_MERCHANT_ID, orderId: params.ORDERID }
+    const isVerifySignature = PaytmChecksum.verifySignature(JSON.stringify(body), process.env.PTM_MERCHANT_KEY, checksum);
+    if (isVerifySignature) {
+        console.log("Checksum Matched");
+        return true
+    } else {
+        console.log("Checksum Mismatched");
+        return false;
+    }
+}
+
+export const orderStatus = async (post_data) => {
+    return new Promise((resolve, reject) => {
+        if (post_data) {
+            const options = {
+                /* for Staging */
+                hostname: process.env.PTM_HOSTNAME,
+                port: 443,
+                path: 'v3//order/status',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': post_data.length,
+                },
+            };
+
+            var response = '';
+            var post_req = https.request(options, async function (post_res) {
+                post_res.on('data', function (chunk) {
+                    response += chunk;
+                });
+
+                post_res.on('end', async function () {
+                    response = JSON.parse(response);
+                    resolve(response)
+                });
+            });
+
+            post_req.write(post_data);
+            post_req.end();
+        } else reject('Bad Request')   
     })
 }
