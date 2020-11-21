@@ -1,10 +1,13 @@
 import { success, notFound, fail } from '../../services/response/'
 import Orders from './model'
 import Products from '../seller-items/model'
+import Transactions from '../transactions/model'
 import mongoose from 'mongoose'
 import { process } from 'babel-jest'
 import { paytmGenChecksum, initiateTransaction, verifyChecksum, orderStatus } from '../../services/payment/paytm/paytm.service'
 import { resolve } from 'bluebird'
+import { verifyOrder, confirmOrder } from '../../services/order/order.service'
+
 
 const processOrder = async (body) => {
     return new Promise(async (resolve, reject) => {
@@ -143,80 +146,40 @@ export const callback = async (req, res, next) => {
 
         orderStatus(JSON.stringify(paytmParams))
         .then(response => {
-            if (verifyChecksum(params, res.head.signature)) {
+            let web_url = process.env.WEB_BASE ? process.env.WEB_BASE : 'http://localhost:3000/'
+            if (verifyChecksum(params, response.head.signature)) {
                 if (response.body.resultInfo.resultCode == "01" 
                 && response.body.resultInfo.resultStatus === "TXN_SUCCESS") {
                     // case 1: transaction success
                     // verify order and amount
-                    Orders.findById(ORDERID)
+                    verifyOrder(ORDERID, response.body.txnAmount)
                     .then(order => {
-                        // validate amount
-                        if (order.finalTotal.toString() === response.body.txnAmount) {
-                            // update product quntity
-                            let _line_promises = order.lineItems.map(line => {
-                                return new Promise ((resolve, reject) => {
-                                    Products.findById(line.productId)
-                                    .then(product => {
-                                        const _req_sku = product.skus.some(sku => sku.key === line.sku.key)
-                                        if (_req_sku) {
-                                            Products.updateOne(
-                                            {_id: line.productId, "skus.key": line.sku.key},
-                                            { $set: { 
-                                                "skus.$.quantity" :  _req_sku.quantity-parseInt(line.quantity), 
-                                                "quantity": product.quantity - parseInt(line.quantity)
-                                            } })
-                                            .then(doc => {
-                                                // update line
-                                                line.lineStatus = 1
-                                                line.lineStatusMsg = 'Confirmed'
-                                                line.lineStatusDate = new Date()
-                                                resolve(line)
-                                            })
-                                            .catch(error => {
-                                                // log error and update order line accordingly
-                                                line.lineStatusDate = new Date()
-                                                resolve(line)
-                                            })
-                                        } else {
-                                            // log error and update order line accordingly
-                                            line.lineStatusDate = new Date()
-                                            resolve(line)
-                                        }
-                                    })
-                                    .catch(error => {
-                                        // update line order status accordingly.
-                                        line.lineStatusDate = new Date()
-                                        resolve(line)
-                                    })
-                                })
-                            });
-                            Promise.all(_line_promises)
-                            .then(_lines => {
-                                // update order, send sms/email to user, generate invoice, send invoice to sellers and admin
-                                order.lineItems = _lines
-                                order.orderStatus = 1
-                                order.orderStatusMsg = 'Confirmed'
-                                order.paymentStatus = 'Success'
-                                order.paymentMethod = "Paytm-"+response.body.paymentMode
-                                order.txn_id = response.body.txnId
-                                Orders.findByIdAndUpdate(order._id, order)
-                                // send email, generate invoice
-                            })
-                            .catch(error => {
-                                // update order accordingly
-                            })
-                            // redirect user to thank you page
-                        } else {
-                            // redirect user to error page, invalid amount in the response.
-                        }
-                    }).catch(error => {
-                        console.log(error)
-                        // redirect user to error page, order not found, invalid order in response
+                        // redirect user to thank you page and confirm order
+                        confirmOrder(order, response)
+                        // update transaction
+                        Transactions.create({
+                            orderId: ORDERID,
+							userId: order.userId,
+							transaction: {
+                                ...response.head,
+                                ...response.body
+                            }
+                        })
+                        .then(done => {
+                            console.log(done)
+                            console.log('Transaction save successfully')
+                        })
+                        return res.redirect(`${web_url}thank-you?orderid=${order._id}&status=Confirmed`)
+                    })
+                    .catch(error => {
+                        // redirect user to error page and display error msg
                     })
                 } else if (response.body.resultInfo.resultStatus === "PENDING") {
                     // case 2: transaction pending
+                    return res.redirect(`${web_url}thank-you?orderid=${order._id}&status=Pending&msg=${response.body.resultInfo.resultMsg}`)
                 } else if (response.body.resultInfo.resultStatus === "TXN_FAILURE") {
                     // case 3: transaction failed
+                    return res.redirect(`${web_url}account/shipping?msg=${response.body.resultInfo.resultMsg}`);
                 }
             } else {
                 // redirect user to error page, checksum doesnt match

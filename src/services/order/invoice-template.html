@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- <meta name="viewport" content="width=device-width, initial-scale=1.0"> -->
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Invoice</title>
+    <style>
+        body{
+            font-size: 10px;
+            font-family: arial,   Helvetica, sans-serif;
+            color:#091426;
+        }
+        .logo{
+            height: 100px;
+        }
+        table td{
+            vertical-align: top;
+        }
+        .tableborder {
+            border-collapse: collapse;
+            vertical-align: top;
+        } 
+
+        .tableborder td, .tableborder th {
+            border: 1px solid black;
+            padding: 8px;
+        }
+    </style> 
+</head>
+<body>
+    <div class="container"  id="customers">
+         
+    <table style="width: 100%;">
+        <tr>
+            <td align="center" colspan="2"> Invoice     
+            </td>
+        </tr>
+        <tr>
+            <td><img class="logo" src="https://www.madeinindiagifts.in/static/icons/icon-192x192.png" class="inv-logo">
+               </td>
+            <td align="right"> 
+               Invoice Date :  {{orderLine.createdAt}}
+            </td>
+        </tr>
+    </table>
+     <table style="width: 100%;">
+        <tr>
+            <td align="left"> 
+                <b> Pickup address </b>
+            </td>
+            <td align="left"> 
+                <b> Shipping address </b> 
+            </td>
+        </tr>
+        <tr>
+            <td align="left"> 
+                <ul style="list-style: none; padding: 0px;margin: 0px;">
+                    <li>{{  orderLine.lineItems.vendorItem.vendor.name }}</li>
+                    <li>{{  orderLine.lineItems.vendorItem.vendor.address }}</li>
+                    <li>{{  orderLine.lineItems.vendorItem.vendor.city }}</li>
+                    <li>{{  orderLine.lineItems.vendorItem.vendor.state }} {{  orderLine.lineItems.vendorItem.vendor.pincode }}</li>
+                    <li>GSTIN : {{  orderLine.lineItems.vendorItem.vendor.gst_no }} </li>
+                </ul> 
+            </td>
+            <td align="left"> 
+                <ul style="list-style: none;padding: 0px;margin: 0px;">
+                    <li>{{  orderLine.shippingAddress.recipientFistName }} {{  orderLine.shippingAddress.recipientLastName }}</li>
+                     <li> <b>Address</b> : {{  orderLine.shippingAddress.addressLine1 }}</li>
+                    <li>{{  orderLine.shippingAddress.addressLine2 }}</li>
+                    <li>{{  orderLine.shippingAddress.city }} {{  orderLine.shippingAddress.pinCode }}</li>
+                    <li>{{  orderLine.shippingAddress.state }}</li>
+                </ul> 
+            </td>
+        </tr>
+    </table>
+    <table class="tableborder" style="width: 100%;">
+                <thead>
+                    <th align="left">Sr#</th>
+                    <th align="left">Product</th>
+                    <th align="left">Quantity</th>
+                    <th align="left">Price ₹</th>
+                </thead>
+                
+                   <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>
+                            {{  orderLine.lineItems.vendorItem.title }}  
+                        </td>
+                        <td>{{  orderLine.lineItems.quantity }}</td>
+                        <td>{{  orderLine.lineItems.lineTotal }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3"  align="right">Shipping charge</td>
+                        <td>{{  orderLine.lineItems.shippingCharges }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3"  align="right">GST (inclusive)</td>
+                        <td>{{  orderLine.lineItems.gst }}</td>
+                    </tr>
+                     <tr>
+                        <td colspan="3"  align="right">Total</td>
+                        <td>{{  orderLine.lineItems.finalTotal }}</td>
+                    </tr>
+                </tbody>
+               
+            </table>
+ 
+    </div>
+</body>
+</html>
